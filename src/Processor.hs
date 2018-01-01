@@ -2,6 +2,7 @@ module Processor where
 
 import Stack
 import System.IO
+import Data.List
 
 -- Types
 type Name = String
@@ -17,19 +18,37 @@ type Program = ([Macro], State, [Token])
 
 
 --evalToken :: [Macro] -> State -> Token -> State
---
---eval :: Program -> State
---
---processData :: String -> IO State
---
+
+
+eval :: Program -> State
+eval _ = ([], Stack [], "")
+
+processData :: String -> IO ()
+processData rawFileData = print $ evalAll programs
+  where
+    evalAll [] = []
+    evalAll (p:ps) = eval (macros, initialState, words p) : evalAll ps
+    programs = drop (numMacros + 1) fileData
+    initialState = ([], Stack [], "")
+    macros = loadMacros numMacros (tail fileData)
+    numMacros = read $ head fileData
+    loadMacros n (l:ls)
+      | n == 0    = []
+      | otherwise = readMacro l : loadMacros (n-1) ls
+    fileData = removeComments $ lines $ rawFileData
+    removeComments fd = filter (\line -> head line /= '#') fd
 
 -- Read commands from text file and executes
 run :: FilePath -> IO ()
 run filepath = do
   contents <- readFile filepath
-  let allLines = lines contents
-      result = filter (\line -> head line /= '#') allLines
-    in putStrLn $ unlines $ result
+  processData $ contents
+
+-- Reading a macro from string
+readMacro :: String -> Macro
+readMacro line = readMacro' $ words line
+  where
+    readMacro' ls = ((['$'] ++ head ls), (read $ head $ tail ls), (drop 2 ls))
 
 -- Get macro token by name
 getMacroTokens :: [Macro] -> Name -> [Token]
