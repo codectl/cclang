@@ -16,19 +16,20 @@ type Variable = (Name, Value)
 type State = ([Variable], Stack Integer, String)
 type Program = ([Macro], State, [Token])
 
+-- Applies token to the current state resulting in a different state
+evalToken :: [Macro] -> State -> Token -> State
+evalToken macros state token = state
 
---evalToken :: [Macro] -> State -> Token -> State
-
-
+-- Computes the final state of a program from a starting point state
 eval :: Program -> State
-eval _ = ([], Stack [], "")
+eval (_, state, []) = state
+eval (macros, state, (token:tokens)) = eval (macros, evalToken macros state token, tokens)
 
-processData :: String -> IO ()
-processData rawFileData = print $ evalAll programs
+-- Builds up program based on file data and returns result from eval
+processData :: String -> IO State
+processData rawFileData = return $ eval (macros, initialState, tokens)
   where
-    evalAll [] = []
-    evalAll (p:ps) = eval (macros, initialState, words p) : evalAll ps
-    programs = drop (numMacros + 1) fileData
+    tokens = words $ unlines $ drop (numMacros + 1) fileData
     initialState = ([], Stack [], "")
     macros = loadMacros numMacros (tail fileData)
     numMacros = read $ head fileData
@@ -38,11 +39,12 @@ processData rawFileData = print $ evalAll programs
     fileData = removeComments $ lines $ rawFileData
     removeComments fd = filter (\line -> head line /= '#') fd
 
--- Read commands from text file and executes
+-- Reads data from text file and outputs result from processData
 run :: FilePath -> IO ()
 run filepath = do
   contents <- readFile filepath
-  processData $ contents
+  (_, _, output) <- processData $ contents
+  putStrLn output
 
 -- Reading a macro from string
 readMacro :: String -> Macro
