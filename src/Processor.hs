@@ -16,13 +16,18 @@ type Variable = (Name, Value)
 type State = ([Variable], Stack Integer, String)
 type Program = ([Macro], State, [Token])
 
+operators :: [(String, (a -> a -> a))]
+operators = [("+", (+)), ("-", (-)), ("*", (*)), ("/", (/)), ("%", (%)),        -- arithmetic operators
+             ("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("==", (==)),  -- relational operators
+             ("!", (!)), ("&", (&)), ("|", (|))]                                -- boolean operators
+
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | elem token $ words "+ - * / % < > = !! && ||" = case pop $ Stack stack of
-    (Nothing, _)             -> error "peeking empty stack"
+  | elem token $ words "+ - * / % < <= > >= == ! & |" = case pop $ Stack stack of
+    (Nothing, _)              -> error "peeking empty stack"
     (Just top1, Stack stack1) -> case pop $ Stack stack1
-                                  (Nothing, _)               -> error "peeking empty stack"
+                                  (Nothing, _)              -> error "peeking empty stack"
                                   (Just top2, Stack stack2) -> (vars, push (token top2 top1) $ Stack stack2, out) -- operator case
   | token !! 0 == '@' = case pop $ Stack stack of
     (Nothing, _)             -> error "peeking empty stack"
