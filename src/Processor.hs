@@ -3,6 +3,7 @@ module Processor where
 import Stack
 import System.IO
 import Data.List
+import Data.Maybe
 
 -- Types
 type Name = String
@@ -19,21 +20,24 @@ type Program = ([Macro], State, [Token])
 operators :: [(String, (a -> a -> a))]
 operators = [("+", (+)), ("-", (-)), ("*", (*)), ("/", (/)), ("%", (%)),        -- arithmetic operators
              ("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("==", (==)),  -- relational operators
-             ("!", (!)), ("&", (&)), ("|", (|))]                                -- boolean operators
+             ("!", (!)), ("&", (&)), ("|", (\|))]                                -- boolean operators
+
+lookupOperator :: String -> [(String, (a -> a -> a))] -> (a -> a -> a)
+lookupOperator _ [] = error "operator not found"
+lookupOperator x ((k,v):os) = if x == k then v else lookupOperator x os
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | elem token $ words "+ - * / % < <= > >= == ! & |" = case pop $ Stack stack of
-    (Nothing, _)              -> error "peeking empty stack"
-    (Just top1, Stack stack1) -> case pop $ Stack stack1
-                                  (Nothing, _)              -> error "peeking empty stack"
-                                  (Just top2, Stack stack2) -> (vars, push (token top2 top1) $ Stack stack2, out) -- operator case
+  | elem token $ words "+ - * / % < <= > >= == ! & |" = (vars, push ((lookupOperator token) top2 top1) $ Stack stack2, out) -- operator case
   | token !! 0 == '@' = case pop $ Stack stack of
     (Nothing, _)             -> error "peeking empty stack"
     (Just top, Stack stack') -> (setVar vars (['@'] ++ token) top, Stack stack', out) -- variable case
 --  | token !! 0 == '$' = (vars)                                                      -- macro case
   | otherwise = (vars, push (read token :: Integer) $ Stack stack, out)
+  where
+    (Just top1, Stack stack1) = fromMaybe (error "peeking empty stack") (Just (pop $ Stack stack))
+    (Just top2, Stack stack2) = fromMaybe (error "peeking empty stack") (Just (pop $ Stack stack1))
 
 -- Computes the final state of a program from a starting point state
 eval :: Program -> State
