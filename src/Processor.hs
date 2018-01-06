@@ -33,8 +33,12 @@ relationalOperators = [("<", (lt)), ("<=", (le)), (">", (gt)), (">=", (ge)), ("=
     (eq) a b = if a == b then 1 else 0
 
 -- Supported bitwise operators
-booleanOperators :: [(String, (Integer -> Integer -> Integer))]
-booleanOperators =  [("&", (.&.)), ("|", (.|.))]
+bitwiseOperators :: [(String, (Integer -> Integer -> Integer))]
+bitwiseOperators =  [("&", (.&.)), ("|", (.|.))]
+
+-- Numeric operators
+numericOperators :: (Num a) => [(String, a)]
+numericOperators = arithmeticOperators ++ relationalOperators ++ bitwiseOperators ++ singleArgOperators
 
 -- Single argument operators
 singleArgOperators :: [(String, (Integer -> Integer))]
@@ -43,23 +47,39 @@ singleArgOperators = [(("!"), (!))]
 
 -- Double argument operators
 doubleArgOperators :: [(String, (Integer -> Integer -> Integer))]
-doubleArgOperators = arithmeticOperators ++ relationalOperators ++ booleanOperators
+doubleArgOperators = numericOperators
+
+-- Stack operators
+stackOperators :: [(String, a)]
+stackOperators = [("dup", dup), ("swap", swap), ("peek", peek), ("pop", evalSinglePop), ("size", size), ("nil", nil)]
 
 -- Lookup operator given its textual representation
-lookupOperator :: String -> [(String, a)] -> a
-lookupOperator _ [] = error "operator not found"
-lookupOperator x ((k,v):os) = if x == k then v else lookupOperator x os
-
--- Gets the arity for one operator
-arityOperator :: String -> Arity
-arityOperator token
-  | elem token $ map (\t -> fst t) singleArgOperators = 1
-  | elem token $ map (\t -> fst t) doubleArgOperators = 2
-  | otherwise = error "operator not found"
+lookupOperator :: String -> a
+lookupOperator token
+  | belongsOperator token numericOperators = getOperator token numericOperators
+  | belongsOperator token stackOperators = getOperator token stackOperators
+   where
+     getOperator _ [val] = snd val
+     getOperator token (t:ts) = if fst t == token then snd t else getOperator token ts
 
 -- Lists all supported operators
 supportedOperators :: [String]
-supportedOperators = map (\t -> fst t) singleArgOperators ++ map (\t -> fst t) doubleArgOperators
+supportedOperators = getOperatorsName singleArgOperators ++ getOperatorsName doubleArgOperators ++ getOperatorsName stackOperators
+
+-- Gets the arity for the operator
+arityOperator :: String -> Arity
+arityOperator token
+  | belongsOperator token singleArgOperators = 1
+  | belongsOperator token doubleArgOperators = 2
+  | otherwise = error "operator not found"
+
+-- Gather all names from the given operator list
+getOperatorsName :: [(String, a)] -> [String]
+getOperatorsName operators = map (\t -> fst t) operators
+
+-- Checks whether operator belongs to the given operator list
+belongsOperator :: String -> [(String, a)] -> Bool
+belongsOperator token operators = elem token $ getOperatorsName operators
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
@@ -70,11 +90,13 @@ evalToken macros (vars, Stack stack, out) token
   | token !! 0 == '@'                 = (setVar vars (['@'] ++ token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
   | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
   where
-    evalState token operators (Stack stack) = push (evalExpression token operators $ Stack stack) (Stack $ drop (arityOperator token) stack)
+    evalState token operators (Stack stack)
+      | belongsOperator token numericOperators = push (evalExpression token operators $ Stack stack) (Stack $ drop (arityOperator token) stack)
+      | belongsOperator token stackOperators   = (Stack stack)
 
 evalExpression token operators (Stack stack)
-  | arityOperator token == 1 = (lookupOperator token singleArgOperators) (fst . evalSinglePop $ Stack stack)
-  | arityOperator token == 2 = (lookupOperator token doubleArgOperators) (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)
+  | belongsOperator token singleArgOperators = (lookupOperator token) (fst . evalSinglePop $ Stack stack)
+  | belongsOperator token doubleArgOperators = (lookupOperator token) (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)
 
 evalPop :: Int -> Stack Integer -> (Integer, Stack Integer)
 evalPop n (Stack stack) = case pop $ Stack $ drop (n-1) stack of
@@ -115,19 +137,19 @@ readMacro line = readMacro' $ words line
     readMacro' ls = ((['$'] ++ head ls), (read $ head $ tail ls), (drop 2 ls))
 
 -- Get macro token by name
-getMacroTokens :: [Macro] -> Name -> Maybe [Token]
-getMacroTokens [] _ = Nothing
-getMacroTokens ((name, _, tokens):macros) lookup_name = if name == lookup_name then Just tokens else getMacroTokens macros lookup_name
+getMacroTokens :: [Macro] -> Name -> [Token]
+getMacroTokens [] _ = error "no macro found"
+getMacroTokens ((name, _, tokens):macros) lookup_name = if name == lookup_name then tokens else getMacroTokens macros lookup_name
 
 -- Get macro arity by name
-getMacroArity :: [Macro] -> Name -> Maybe Arity
-getMacroArity [] _ = Nothing
-getMacroArity ((name, arity, _):macros) lookup_name = if name == lookup_name then Just arity else getMacroArity macros lookup_name
+getMacroArity :: [Macro] -> Name -> Arity
+getMacroArity [] _ = error "no macro found"
+getMacroArity ((name, arity, _):macros) lookup_name = if name == lookup_name then arity else getMacroArity macros lookup_name
 
 -- Get variable value by name
-getVar :: [Variable] -> Name -> Maybe Value
-getVar [] _ = Nothing
-getVar ((name, value):variables) lookup_name = if name == lookup_name then Just value else getVar variables lookup_name
+getVar :: [Variable] -> Name -> Value
+getVar [] _ = error "no variable found"
+getVar ((name, value):variables) lookup_name = if name == lookup_name then value else getVar variables lookup_name
 
 -- Set variable value by name
 setVar :: [Variable] -> Name -> Value -> [Variable]
