@@ -3,7 +3,6 @@ module Processor where
 import Stack
 import System.IO
 import Data.List
-import Data.Maybe
 
 -- Types
 type Name = String
@@ -17,10 +16,28 @@ type Variable = (Name, Value)
 type State = ([Variable], Stack Integer, String)
 type Program = ([Macro], State, [Token])
 
-operators :: [(String, (a -> a -> a))]
-operators = [("+", (+)), ("-", (-)), ("*", (*)), ("/", (/)), ("%", (%)),        -- arithmetic operators
-             ("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("==", (==)),  -- relational operators
-             ("!", (!)), ("&", (&)), ("|", (\|))]                                -- boolean operators
+-- Supported arithmetic operators
+arithmeticOperators :: [(String, (Integer -> Integer -> Integer))]
+arithmeticOperators = [("+", (+)), ("-", (-)), ("*", (*)), ("/", div), ("%", (%))]
+  where (%) a b = mod a b
+
+-- Supported relational operators
+relationalOperators :: [(String, (Integer -> Integer -> Integer))]
+relationalOperators = [("<", (lt)), ("<=", (le)), (">", (gt)), (">=", (ge)), ("==", (eq))]
+  where
+    (lt) a b = if a < b then 1 else 0
+    (le) a b = if a <= b then 1 else 0
+    (gt) a b = if a > b then 1 else 0
+    (ge) a b = if a >= b then 1 else 0
+    (eq) a b = if a == b then 1 else 0
+
+-- Supported boolean operators
+booleanOperators :: [(String, (Integer -> Integer -> Bool))]
+booleanOperators =  [("!", (!)), ("&", (&)), ("|", (\|))]
+  where
+    (&) a b = True
+    (!) a b = True
+    (\|) a b = True
 
 lookupOperator :: String -> [(String, (a -> a -> a))] -> (a -> a -> a)
 lookupOperator _ [] = error "operator not found"
@@ -29,15 +46,21 @@ lookupOperator x ((k,v):os) = if x == k then v else lookupOperator x os
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | elem token $ words "+ - * / % < <= > >= == ! & |" = (vars, push ((lookupOperator token) top2 top1) $ Stack stack2, out) -- operator case
-  | token !! 0 == '@' = case pop $ Stack stack of
-    (Nothing, _)             -> error "peeking empty stack"
-    (Just top, Stack stack') -> (setVar vars (['@'] ++ token) top, Stack stack', out) -- variable case
---  | token !! 0 == '$' = (vars)                                                      -- macro case
-  | otherwise = (vars, push (read token :: Integer) $ Stack stack, out)
+  | token == ","                      = (vars, snd . evalPop $ Stack stack, out ++ (show . fst . evalPop $ Stack stack) ++ [' '])
+  | token == "."                      = (vars, snd . evalPop $ Stack stack, out ++ (show . fst . evalPop $ Stack stack) ++ ['\n'])
+  | elem token $ words "+ - * / %"    = (vars, evalState token arithmeticOperators $ Stack stack, out) -- arithmetic tokens
+  | elem token $ words "< <= > >= ==" = (vars, evalState token relationalOperators $ Stack stack, out) -- relational tokens
+  | token !! 0 == '@'                 = case pop $ Stack stack of
+                                       (Nothing, _)             -> error "peeking empty stack"
+                                       (Just top, Stack stack') -> (setVar vars (['@'] ++ token) top, Stack stack', out) -- variable case
+  | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
   where
-    (Just top1, Stack stack1) = fromMaybe (error "peeking empty stack") (Just (pop $ Stack stack))
-    (Just top2, Stack stack2) = fromMaybe (error "peeking empty stack") (Just (pop $ Stack stack1))
+    evalState token operators (Stack stack) = push (evalExpression token operators $ Stack stack) (snd . evalPop . snd . evalPop $ Stack stack)
+    evalExpression token operators (Stack stack) = (lookupOperator token operators) (fst . evalPop . snd . evalPop $ Stack stack) (fst . evalPop $ Stack stack)
+    evalPop (Stack stack) = case pop $ Stack stack of
+      (Nothing, _)           -> error "poping empty stack"
+      (Just x, Stack stack') -> (x, Stack stack')
+
 
 -- Computes the final state of a program from a starting point state
 eval :: Program -> State
