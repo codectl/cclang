@@ -38,41 +38,51 @@ booleanOperators =  [("&", (.&.)), ("|", (.|.))]
 
 -- Single argument operators
 singleArgOperators :: [(String, (Integer -> Integer))]
-singleArgOperators = [("!"), (!)]
-  where (!) a = if a > 0 then 1 else 0
+singleArgOperators = [(("!"), (!))]
+  where (!) a = if a == 0 then 1 else 0
 
 -- Double argument operators
 doubleArgOperators :: [(String, (Integer -> Integer -> Integer))]
 doubleArgOperators = arithmeticOperators ++ relationalOperators ++ booleanOperators
 
-lookupOperator :: String -> [(String, Arity, (a -> a -> a))] -> (Arity, (a -> a -> a))
+-- Lookup operator given its textual representation
+lookupOperator :: String -> [(String, a)] -> a
 lookupOperator _ [] = error "operator not found"
-lookupOperator x ((k,n,v):os) = if x == k then (n,v) else lookupOperator x os
+lookupOperator x ((k,v):os) = if x == k then v else lookupOperator x os
+
+-- Gets the arity for one operator
+arityOperator :: String -> Arity
+arityOperator token
+  | elem token $ map (\t -> fst t) singleArgOperators = 1
+  | elem token $ map (\t -> fst t) doubleArgOperators = 2
+  | otherwise = error "operator not found"
+
+-- Lists all supported operators
+supportedOperators :: [String]
+supportedOperators = map (\t -> fst t) singleArgOperators ++ map (\t -> fst t) doubleArgOperators
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
   | token == ","                      = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
   | token == "."                      = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
-  | elem token $ words "+ - * / %"    = (vars, evalState token arithmeticOperators $ Stack stack, out) -- arithmetic tokens
-  | elem token $ words "< <= > >= ==" = (vars, evalState token relationalOperators $ Stack stack, out) -- relational tokens
-  | elem token $ words "! & |"        = (vars, evalState token booleanOperators $ Stack stack, out)    -- boolean tokens
-  | token !! 0 == '@'                 = (setVar vars (['@'] ++ token) $ fst . evalSinglePop $ Stack stack, evalSinglePop $ Stack stack, out) -- variable case
+  | elem token supportedOperators     = (vars, evalState token supportedOperators $ Stack stack, out)
+  | token !! 0 == '@'                 = (setVar vars (['@'] ++ token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
   | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
   where
-    evalState token operators (Stack stack) = push (evalExpression token operators $ Stack stack) (Stack $ drop (fst $ lookupOperator token operators) stack)
+    evalState token operators (Stack stack) = push (evalExpression token operators $ Stack stack) (Stack $ drop (arityOperator token) stack)
 
-evalExpression :: String -> [(String, Arity, (Integer -> Integer -> Integer))] -> Stack Integer
 evalExpression token operators (Stack stack)
-  | fst operator == 1 = (snd operator) $ (fst . evalSinglePop $ Stack stack)
-  | otherwise         = (snd operator) (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)
-  where operator = lookupOperator token operators
+  | arityOperator token == 1 = (lookupOperator token singleArgOperators) (fst . evalSinglePop $ Stack stack)
+  | arityOperator token == 2 = (lookupOperator token doubleArgOperators) (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)
 
 evalPop :: Int -> Stack Integer -> (Integer, Stack Integer)
 evalPop n (Stack stack) = case pop $ Stack $ drop (n-1) stack of
   (Nothing, _)      -> error "poping empty stack"
   (Just x, Stack stack') -> (x, Stack stack')
-evalSinglePop (Stack stack) = evalPop 1 (Stack stack)
+
+evalSinglePop :: Stack Integer -> (Integer, Stack Integer)
+evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
 
 -- Computes the final state of a program from a starting point state
 eval :: Program -> State
