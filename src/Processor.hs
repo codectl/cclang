@@ -3,6 +3,7 @@ module Processor where
 import Stack
 import System.IO
 import Data.List
+import Data.Bits
 
 -- Types
 type Name = String
@@ -32,12 +33,9 @@ relationalOperators = [("<", (lt)), ("<=", (le)), (">", (gt)), (">=", (ge)), ("=
     (eq) a b = if a == b then 1 else 0
 
 -- Supported boolean operators
-booleanOperators :: [(String, (Integer -> Integer -> Bool))]
-booleanOperators =  [("!", (!)), ("&", (&)), ("|", (\|))]
-  where
-    (&) a b = True
-    (!) a b = True
-    (\|) a b = True
+booleanOperators :: [(String, (Integer -> Integer -> Integer))]
+booleanOperators =  [("!", (!)), ("&", (.&.)), ("|", (.|.))]
+  where (!) a = if a > 0 then 1 else 0
 
 lookupOperator :: String -> [(String, (a -> a -> a))] -> (a -> a -> a)
 lookupOperator _ [] = error "operator not found"
@@ -50,9 +48,8 @@ evalToken macros (vars, Stack stack, out) token
   | token == "."                      = (vars, snd . evalPop $ Stack stack, out ++ (show . fst . evalPop $ Stack stack) ++ ['\n'])
   | elem token $ words "+ - * / %"    = (vars, evalState token arithmeticOperators $ Stack stack, out) -- arithmetic tokens
   | elem token $ words "< <= > >= ==" = (vars, evalState token relationalOperators $ Stack stack, out) -- relational tokens
-  | token !! 0 == '@'                 = case pop $ Stack stack of
-                                       (Nothing, _)             -> error "peeking empty stack"
-                                       (Just top, Stack stack') -> (setVar vars (['@'] ++ token) top, Stack stack', out) -- variable case
+  | elem token $ words "! & |"        = (vars, evalState token booleanOperators $ Stack stack, out)    -- boolean tokens
+  | token !! 0 == '@'                 = (setVar vars (['@'] ++ token) $ fst . evalPop $ Stack stack, evalPop $ Stack stack, out) -- variable case
   | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
   where
     evalState token operators (Stack stack) = push (evalExpression token operators $ Stack stack) (snd . evalPop . snd . evalPop $ Stack stack)
