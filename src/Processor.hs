@@ -19,16 +19,17 @@ type Program = ([Macro], State, [Token])
 
 -- Lists all supported operators
 supportedOperators :: [String]
-supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil"
+supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil if: loop:"
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | token == ","                      = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
-  | token == "."                      = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
-  | elem token supportedOperators     = (vars, evalExpression token $ Stack stack, out)
-  | token !! 0 == '@'                 = (setVar vars (['@'] ++ token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
-  | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
+  | token == ","                        = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
+  | token == "."                        = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
+  | token !! 0 == '@'                   = (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
+  | elem token supportedOperators       = (vars, evalExpression token $ Stack stack, out)
+  | elem token $ map (\(x,_) -> x) vars = (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
+  | otherwise                           = (vars, push (read token :: Integer) $ Stack stack, out)
 
 evalExpression :: String -> Stack Integer -> Stack Integer
 evalExpression token (Stack stack) =
@@ -40,6 +41,7 @@ evalExpression token (Stack stack) =
       (gt) a b = if a > b then 1 else 0
       (ge) a b = if a >= b then 1 else 0
       (eq) a b = if a == b then 1 else 0
+
   in case token of
     "+" -> evalDoubleArg (+) $ Stack stack
     "-" -> evalDoubleArg (-) $ Stack stack
@@ -55,11 +57,19 @@ evalExpression token (Stack stack) =
     "|" -> evalDoubleArg (.|.) $ Stack stack
     "!" -> evalSingleArg (!) $ Stack stack
     "dup" -> push (fromJust . peek $ Stack stack) $ Stack stack
-    "swap" -> push (fst . evalPop 2 $ Stack stack) $ snd (evalSinglePop $ Stack stack)
+    "swap" -> push (fst . evalPop 2 $ Stack stack) $ push (fst . evalSinglePop $ Stack stack) (snd . evalPop 2 $ Stack stack)
     "peek" -> push (fromJust . peek $ Stack stack) $ Stack stack
     "pop" -> snd . evalSinglePop $ Stack stack
     "size" -> push (toInteger . size $ Stack stack) $ Stack stack
     "nil" -> Stack stack
+    _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then push (read $ (splitOn ":" token) !! 1) $ Stack stack else push (read $ (splitOn ":" token) !! 2) $ Stack stack
+    _ | take 5 token == "loop:" -> Stack stack
+
+splitOn x str = splitOn' x [] "" str
+        where
+          splitOn' :: String -> [String] -> String -> String -> [String]
+          splitOn' _ result substring [] = result ++ [substring]
+          splitOn' x result substring (t:ts) = if x == [t] then splitOn' x (result ++ [substring]) "" ts else splitOn' x result (substring ++ [t]) ts
 
 evalPop :: Int -> Stack Integer -> (Integer, Stack Integer)
 evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
