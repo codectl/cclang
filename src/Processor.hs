@@ -2,8 +2,8 @@ module Processor where
 
 import Stack
 import System.IO
-import Data.List
 import Data.Bits
+import Data.Maybe
 
 -- Types
 type Name = String
@@ -19,7 +19,7 @@ type Program = ([Macro], State, [Token])
 
 -- Lists all supported operators
 supportedOperators :: [String]
-supportedOperators = words "+ - * / % < <= > >= == & | !"
+supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil"
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
@@ -31,29 +31,38 @@ evalToken macros (vars, Stack stack, out) token
   | otherwise                         = (vars, push (read token :: Integer) $ Stack stack, out)
 
 evalExpression :: String -> Stack Integer -> Stack Integer
-evalExpression token (Stack stack) = case token of
-  "+" -> evalDoubleArg (+) $ Stack stack
-  "-" -> evalDoubleArg (-) $ Stack stack
-  "*" -> evalDoubleArg (*) $ Stack stack
-  "/" -> evalDoubleArg (div) $ Stack stack
-  "%" -> evalDoubleArg (mod) $ Stack stack
-  "<" -> evalDoubleArg (<) $ Stack stack
-  "<=" -> evalDoubleArg (<=) $ Stack stack
-  ">" -> evalDoubleArg (>) $ Stack stack
-  ">=" -> evalDoubleArg (>=) $ Stack stack
-  "==" -> evalDoubleArg (==) $ Stack stack
-  "&" -> evalDoubleArg (.&.) $ Stack stack
-  "|" -> evalDoubleArg (.|.) $ Stack stack
-  "!" -> evalDoubleArg (!) $ Stack stack
-    where
-      evalSingleArg op (Stack stack) = push (op (fst . evalSinglePop $ Stack stack)) (Stack $ drop 1 stack)
+evalExpression token (Stack stack) =
+  let evalSingleArg op (Stack stack) = push (op (fst . evalSinglePop $ Stack stack)) (Stack $ drop 1 stack)
       evalDoubleArg op (Stack stack) = push (op (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)) (Stack $ drop 2 stack)
       (!) a = if a == 0 then 1 else 0
+      (lt) a b = if a < b then 1 else 0
+      (le) a b = if a <= b then 1 else 0
+      (gt) a b = if a > b then 1 else 0
+      (ge) a b = if a >= b then 1 else 0
+      (eq) a b = if a == b then 1 else 0
+  in case token of
+    "+" -> evalDoubleArg (+) $ Stack stack
+    "-" -> evalDoubleArg (-) $ Stack stack
+    "*" -> evalDoubleArg (*) $ Stack stack
+    "/" -> evalDoubleArg (div) $ Stack stack
+    "%" -> evalDoubleArg (mod) $ Stack stack
+    "<" -> evalDoubleArg (lt) $ Stack stack
+    "<=" -> evalDoubleArg (le) $ Stack stack
+    ">" -> evalDoubleArg (gt) $ Stack stack
+    ">=" -> evalDoubleArg (ge) $ Stack stack
+    "==" -> evalDoubleArg (eq) $ Stack stack
+    "&" -> evalDoubleArg (.&.) $ Stack stack
+    "|" -> evalDoubleArg (.|.) $ Stack stack
+    "!" -> evalSingleArg (!) $ Stack stack
+    "dup" -> push (fromJust . peek $ Stack stack) $ Stack stack
+    "swap" -> push (fst . evalPop 2 $ Stack stack) $ snd (evalSinglePop $ Stack stack)
+    "peek" -> push (fromJust . peek $ Stack stack) $ Stack stack
+    "pop" -> snd . evalSinglePop $ Stack stack
+    "size" -> push (toInteger . size $ Stack stack) $ Stack stack
+    "nil" -> Stack stack
 
 evalPop :: Int -> Stack Integer -> (Integer, Stack Integer)
-evalPop n (Stack stack) = case pop $ Stack $ drop (n-1) stack of
-  (Nothing, _)           -> error "poping empty stack"
-  (Just x, Stack stack') -> (x, Stack stack')
+evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
 
 evalSinglePop :: Stack Integer -> (Integer, Stack Integer)
 evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
