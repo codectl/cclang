@@ -1,0 +1,13 @@
+11
+divide      2   _1 _2 % 0 =
+else1       0   _1 _2 1 + $findFactor
+then2       0   pop pop 0
+else2       2   _1 _2 $divide if:1:$else1
+findFactor  2   _1 _2 1 + = _1 swap _2 swap if:$then2:$else2
+then3       0   pop 0
+else3       1   _1 2 $findFactor !
+isPrime     1   _1 2 _1 > if:$then3:$else3
+then4       0   i .
+block       0   @i i $isPrime if:$then4
+printPrimes 1   _1 loop:$block
+100 $printPrimes
