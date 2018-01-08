@@ -4,6 +4,7 @@ import Stack
 import System.IO
 import Data.Bits
 import Data.Maybe
+import Data.List
 
 -- Types
 type Name = String
@@ -19,17 +20,24 @@ type Program = ([Macro], State, [Token])
 
 -- Lists all supported operators
 supportedOperators :: [String]
-supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil if: loop:"
+supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil"
+
+supportedSyntax :: [String]
+supportedSyntax = words "if: loop:"
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | token == ","                        = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
-  | token == "."                        = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
-  | token !! 0 == '@'                   = (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
-  | elem token supportedOperators       = (vars, evalExpression token $ Stack stack, out)
-  | elem token $ map (\(x,_) -> x) vars = (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
-  | otherwise                           = (vars, push (read token :: Integer) $ Stack stack, out)
+  | token == ","                                              = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
+  | token == "."                                              = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
+  | token !! 0 == '@'                                         = (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
+  | elem token supportedOperators                             = (vars, evalExpression token $ Stack stack, out)
+  | validSyntax token supportedSyntax                   = (vars, evalExpression token $ Stack stack, out)
+  | elem token $ map (\(x,_) -> x) vars                       = (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
+  | otherwise                                                 = (vars, push (read token :: Integer) $ Stack stack, out)
+
+validSyntax _ [] = False
+validSyntax token (o:os) = if elem o $ inits token then True else validSyntax token os
 
 evalExpression :: String -> Stack Integer -> Stack Integer
 evalExpression token (Stack stack) =
