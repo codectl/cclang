@@ -20,7 +20,7 @@ type Program = ([Macro], State, [Token])
 
 -- Lists all supported operators
 supportedOperators :: [String]
-supportedOperators = words "+ - * / % < <= > >= == & | ! dup swap peek pop size nil"
+supportedOperators = words ", . + - * / % < <= > >= == & | ! dup swap peek pop size nil"
 
 supportedSyntax :: [String]
 supportedSyntax = words "if: loop:"
@@ -28,11 +28,9 @@ supportedSyntax = words "if: loop:"
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
 evalToken macros (vars, Stack stack, out) token
-  | token == ","                                               = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
-  | token == "."                                               = (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
   | token !! 0 == '@'                                          = (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
-  | elem token supportedOperators                              = (vars, evalExpression token $ Stack stack, out)
-  | not . null . filter (`elem` supportedSyntax) $ inits token = (vars, evalExpression token $ Stack stack, out)
+  | elem token supportedOperators                              = evalExpression token $ (vars, Stack stack, out)
+  | not . null . filter (`elem` supportedSyntax) $ inits token = evalExpression token $ (vars, Stack stack, out)
   | elem token $ map (\(x,_) -> x) vars                        = (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
   | otherwise                                                  = (vars, push (read token :: Integer) $ Stack stack, out)
 
@@ -40,7 +38,7 @@ validSyntax _ [] = False
 validSyntax token (o:os) = if elem o $ inits token then True else validSyntax token os
 
 evalExpression :: String -> State -> State
-evalExpression token (Stack stack) =
+evalExpression token (vars, Stack stack, out) =
   let evalSingleArg op (Stack stack) = push (op (fst . evalSinglePop $ Stack stack)) (Stack $ drop 1 stack)
       evalDoubleArg op (Stack stack) = push (op (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)) (Stack $ drop 2 stack)
       (!) a = if a == 0 then 1 else 0
@@ -51,30 +49,32 @@ evalExpression token (Stack stack) =
       (eq) a b = if a == b then 1 else 0
 
   in case token of
-    "+" -> evalDoubleArg (+) $ Stack stack
-    "-" -> evalDoubleArg (-) $ Stack stack
-    "*" -> evalDoubleArg (*) $ Stack stack
-    "/" -> evalDoubleArg (div) $ Stack stack
-    "%" -> evalDoubleArg (mod) $ Stack stack
-    "<" -> evalDoubleArg (lt) $ Stack stack
-    "<=" -> evalDoubleArg (le) $ Stack stack
-    ">" -> evalDoubleArg (gt) $ Stack stack
-    ">=" -> evalDoubleArg (ge) $ Stack stack
-    "==" -> evalDoubleArg (eq) $ Stack stack
-    "&" -> evalDoubleArg (.&.) $ Stack stack
-    "|" -> evalDoubleArg (.|.) $ Stack stack
-    "!" -> evalSingleArg (!) $ Stack stack
-    "dup" -> push (fromJust . peek $ Stack stack) $ Stack stack
-    "swap" -> push (fst . evalPop 2 $ Stack stack) $ push (fst . evalSinglePop $ Stack stack) (snd . evalPop 2 $ Stack stack)
-    "peek" -> push (fromJust . peek $ Stack stack) $ Stack stack
-    "pop" -> snd . evalSinglePop $ Stack stack
-    "size" -> push (toInteger . size $ Stack stack) $ Stack stack
-    "nil" -> Stack stack
-    _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then push (read $ (splitOn ":" token) !! 1) $ Stack stack else push (read $ (splitOn ":" token) !! 2) $ Stack stack
-    _ | take 5 token == "loop:" -> loop (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
+    "," -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
+    "." -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
+    "+" -> (vars, evalDoubleArg (+) $ Stack stack, out)
+    "-" -> (vars, evalDoubleArg (-) $ Stack stack, out)
+    "*" -> (vars, evalDoubleArg (*) $ Stack stack, out)
+    "/" -> (vars, evalDoubleArg (div) $ Stack stack, out)
+    "%" -> (vars, evalDoubleArg (mod) $ Stack stack, out)
+    "<" -> (vars, evalDoubleArg (lt) $ Stack stack, out)
+    "<=" -> (vars, evalDoubleArg (le) $ Stack stack, out)
+    ">" -> (vars, evalDoubleArg (gt) $ Stack stack, out)
+    ">=" -> (vars, evalDoubleArg (ge) $ Stack stack, out)
+    "==" -> (vars, evalDoubleArg (eq) $ Stack stack, out)
+    "&" -> (vars, evalDoubleArg (.&.) $ Stack stack, out)
+    "|" -> (vars, evalDoubleArg (.|.) $ Stack stack, out)
+    "!" -> (vars, evalSingleArg (!) $ Stack stack, out)
+    "dup" -> (vars, push (fromJust . peek $ Stack stack) $ Stack stack, out)
+    "swap" -> (vars, push (fst . evalPop 2 $ Stack stack) $ push (fst . evalSinglePop $ Stack stack) (snd . evalPop 2 $ Stack stack), out)
+    "peek" -> (vars, push (fromJust . peek $ Stack stack) $ Stack stack, out)
+    "pop" -> (vars, snd . evalSinglePop $ Stack stack, out)
+    "size" -> (vars, push (toInteger . size $ Stack stack) $ Stack stack, out)
+    "nil" -> (vars, Stack stack, out)
+    _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then (vars, push (read $ (splitOn ":" token) !! 1) $ Stack stack, out) else (vars, push (read $ (splitOn ":" token) !! 2) $ Stack stack, out)
+    _ | take 5 token == "loop:" -> loop (vars, snd . evalSinglePop $ Stack stack, out) (splitOn ":" token !! 1) (fst . evalSinglePop $ Stack stack) (fst . evalSinglePop $ Stack stack)
 
-loop (0, Stack stack) _ = Stack stack
-loop (n, Stack stack) op = loop ((n-1), evalExpression op $ (push n $ Stack stack)) op
+loop (vars, Stack stack, out) _ n 0 = (vars, Stack stack, out)
+loop (vars, Stack stack, out) op n1 n2 = loop (evalExpression op (vars, (push (n1-(n2-1)) $ Stack stack), out)) op n1 (n2-1)
 
 splitOn x str = splitOn' x [] "" str
         where

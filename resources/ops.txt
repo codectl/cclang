@@ -21,4 +21,4 @@
 # if (1 or 0) then 100 else 200
 1 0 | if:100:200 .
 # loops from 1 to 5, and print top of the stack (which is the progress variable)
-51 loop:,
+5 loop:,
