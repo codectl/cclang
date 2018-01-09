@@ -39,7 +39,7 @@ evalToken macros (vars, Stack stack, out) token
 validSyntax _ [] = False
 validSyntax token (o:os) = if elem o $ inits token then True else validSyntax token os
 
-evalExpression :: String -> Stack Integer -> Stack Integer
+evalExpression :: String -> State -> State
 evalExpression token (Stack stack) =
   let evalSingleArg op (Stack stack) = push (op (fst . evalSinglePop $ Stack stack)) (Stack $ drop 1 stack)
       evalDoubleArg op (Stack stack) = push (op (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)) (Stack $ drop 2 stack)
@@ -71,7 +71,10 @@ evalExpression token (Stack stack) =
     "size" -> push (toInteger . size $ Stack stack) $ Stack stack
     "nil" -> Stack stack
     _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then push (read $ (splitOn ":" token) !! 1) $ Stack stack else push (read $ (splitOn ":" token) !! 2) $ Stack stack
-    _ | take 5 token == "loop:" -> Stack stack
+    _ | take 5 token == "loop:" -> loop (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
+
+loop (0, Stack stack) _ = Stack stack
+loop (n, Stack stack) op = loop ((n-1), evalExpression op $ (push n $ Stack stack)) op
 
 splitOn x str = splitOn' x [] "" str
         where
