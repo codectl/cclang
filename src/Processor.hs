@@ -27,18 +27,7 @@ supportedSyntax = words "if: loop:"
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
-evalToken macros (vars, Stack stack, out) token
-  | token !! 0 == '@'                                          = (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
-  | elem token supportedOperators                              = evalExpression token $ (vars, Stack stack, out)
-  | not . null . filter (`elem` supportedSyntax) $ inits token = evalExpression token $ (vars, Stack stack, out)
-  | elem token $ map (\(x,_) -> x) vars                        = (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
-  | otherwise                                                  = (vars, push (read token :: Integer) $ Stack stack, out)
-
-validSyntax _ [] = False
-validSyntax token (o:os) = if elem o $ inits token then True else validSyntax token os
-
-evalExpression :: String -> State -> State
-evalExpression token (vars, Stack stack, out) =
+evalToken macros (vars, Stack stack, out) token =
   let evalSingleArg op (Stack stack) = push (op (fst . evalSinglePop $ Stack stack)) (Stack $ drop 1 stack)
       evalDoubleArg op (Stack stack) = push (op (fst . evalPop 2 $ Stack stack) (fst . evalSinglePop $ Stack stack)) (Stack $ drop 2 stack)
       (!) a = if a == 0 then 1 else 0
@@ -47,7 +36,14 @@ evalExpression token (vars, Stack stack, out) =
       (gt) a b = if a > b then 1 else 0
       (ge) a b = if a >= b then 1 else 0
       (eq) a b = if a == b then 1 else 0
-
+      loop (vars, _, out) (n, Stack stack) op = loop' (vars, Stack stack, out) op n n
+      loop' (vars, Stack stack, out) _ n 0 = (vars, Stack stack, out)
+      loop' (vars, Stack stack, out) op n1 n2 = loop' (evalToken macros (vars, (push (n1-(n2-1)) $ Stack stack), out) op) op n1 (n2-1)
+      splitOn x str = splitOn' x [] "" str
+      splitOn' _ result substring [] = result ++ [substring]
+      splitOn' x result substring (t:ts) = if x == [t] then splitOn' x (result ++ [substring]) "" ts else splitOn' x result (substring ++ [t]) ts
+      evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
+      evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
   in case token of
     "," -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
     "." -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
@@ -70,23 +66,11 @@ evalExpression token (vars, Stack stack, out) =
     "pop" -> (vars, snd . evalSinglePop $ Stack stack, out)
     "size" -> (vars, push (toInteger . size $ Stack stack) $ Stack stack, out)
     "nil" -> (vars, Stack stack, out)
+    _ | token !! 0 == '@' -> (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
+    _ | elem token $ map (\(x,_) -> x) vars -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
     _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then (vars, push (read $ (splitOn ":" token) !! 1) $ Stack stack, out) else (vars, push (read $ (splitOn ":" token) !! 2) $ Stack stack, out)
-    _ | take 5 token == "loop:" -> loop (vars, snd . evalSinglePop $ Stack stack, out) (splitOn ":" token !! 1) (fst . evalSinglePop $ Stack stack) (fst . evalSinglePop $ Stack stack)
-
-loop (vars, Stack stack, out) _ n 0 = (vars, Stack stack, out)
-loop (vars, Stack stack, out) op n1 n2 = loop (evalExpression op (vars, (push (n1-(n2-1)) $ Stack stack), out)) op n1 (n2-1)
-
-splitOn x str = splitOn' x [] "" str
-        where
-          splitOn' :: String -> [String] -> String -> String -> [String]
-          splitOn' _ result substring [] = result ++ [substring]
-          splitOn' x result substring (t:ts) = if x == [t] then splitOn' x (result ++ [substring]) "" ts else splitOn' x result (substring ++ [t]) ts
-
-evalPop :: Int -> Stack Integer -> (Integer, Stack Integer)
-evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
-
-evalSinglePop :: Stack Integer -> (Integer, Stack Integer)
-evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
+    _ | take 5 token == "loop:" -> loop (vars, Stack stack, out) (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
+    _ -> (vars, push (read token :: Integer) $ Stack stack, out)
 
 -- Computes the final state of a program from a starting point state
 eval :: Program -> State
