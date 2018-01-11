@@ -48,6 +48,11 @@ evalToken macros (vars, Stack stack, out) token =
       evalMacro n (vars, Stack stack, out) = evalMacro' n n (vars, Stack stack, out)
       evalMacro' _ 0 (vars, Stack stack, out) = (vars, Stack stack, out)
       evalMacro' n1 n2 (vars, Stack stack, out) = evalMacro' n1 (n2-1) (setVar vars (['_'] ++ show (n1-(n2-1))) (fst . evalSinglePop $ Stack stack), snd . evalSinglePop $ Stack stack, out)
+      count _ [] = 0
+      count e (t:ts) = if e == t then 1 + count e ts else count e ts
+      evalConditional macros (vars, (top, Stack stack), out) token
+        | count ':' token == 1 = if (!) top == 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else (vars, Stack stack, out)
+        | otherwise            = if (!) top == 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 2
   in case token of
     "," -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
     "." -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
@@ -72,6 +77,7 @@ evalToken macros (vars, Stack stack, out) token =
     "nil" -> (vars, Stack stack, out)
     _ | token !! 0 == '@' -> (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
     _ | elem token $ map (\(x,_) -> x) vars -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
+    _ | token !! 0 == '_' -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
     _ | token !! 0 == '$' -> eval (macros, evalMacro (fromJust . getMacroArity macros $ tail token) (vars, Stack stack, out), fromJust $ getMacroTokens macros $ tail token)
     _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then (vars, push (read $ (splitOn ":" token) !! 1) $ Stack stack, out) else (vars, push (read $ (splitOn ":" token) !! 2) $ Stack stack, out)
     _ | take 5 token == "loop:" -> loop (vars, Stack stack, out) (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
