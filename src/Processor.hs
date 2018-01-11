@@ -79,7 +79,7 @@ evalToken macros (vars, Stack stack, out) token =
     _ | elem token $ map (\(x,_) -> x) vars -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
     _ | token !! 0 == '_' -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
     _ | token !! 0 == '$' -> eval (macros, evalMacro (fromJust . getMacroArity macros $ tail token) (vars, Stack stack, out), fromJust $ getMacroTokens macros $ tail token)
-    _ | take 3 token == "if:" -> if (!) (fst . evalSinglePop $ Stack stack) == 0 then (vars, push (read $ (splitOn ":" token) !! 1) $ Stack stack, out) else (vars, push (read $ (splitOn ":" token) !! 2) $ Stack stack, out)
+    _ | take 3 token == "if:" -> evalConditional macros (vars, (evalSinglePop $ Stack stack), out) token
     _ | take 5 token == "loop:" -> loop (vars, Stack stack, out) (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
     _ -> (vars, push (read token :: Integer) $ Stack stack, out)
 
