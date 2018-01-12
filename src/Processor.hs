@@ -1,10 +1,8 @@
 module Processor where
 
 import Stack
-import System.IO
 import Data.Bits
 import Data.Maybe
-import Data.List
 
 -- Types
 type Name = String
