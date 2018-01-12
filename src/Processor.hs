@@ -45,14 +45,13 @@ evalToken macros (vars, Stack stack, out) token =
       splitOn' x result substring (t:ts) = if x == [t] then splitOn' x (result ++ [substring]) "" ts else splitOn' x result (substring ++ [t]) ts
       evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
       evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
-      evalMacro n (vars, Stack stack, out) = evalMacro' n n (vars, Stack stack, out)
-      evalMacro' _ 0 (vars, Stack stack, out) = (vars, Stack stack, out)
-      evalMacro' n1 n2 (vars, Stack stack, out) = evalMacro' n1 (n2-1) (setVar vars (['_'] ++ show (n1-(n2-1))) (fst . evalSinglePop $ Stack stack), snd . evalSinglePop $ Stack stack, out)
+      evalMacro 0 (vars, Stack stack, out) = (vars, Stack stack, out)
+      evalMacro n (vars, Stack stack, out) = evalMacro (n-1) (setVar vars (['_'] ++ show n) (fst . evalSinglePop $ Stack stack), snd . evalSinglePop $ Stack stack, out)
       count _ [] = 0
       count e (t:ts) = if e == t then 1 + count e ts else count e ts
       evalConditional macros (vars, (top, Stack stack), out) token
-        | count ':' token == 1 = if (!) top == 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else (vars, Stack stack, out)
-        | otherwise            = if (!) top == 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 2
+        | count ':' token == 1 = if top /= 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else (vars, Stack stack, out)
+        | otherwise            = if top /= 0 then evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 1 else evalToken macros (vars, Stack stack, out) $ (splitOn ":" token) !! 2
   in case token of
     "," -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ [' '])
     "." -> (vars, snd . evalSinglePop $ Stack stack, out ++ (show . fst . evalSinglePop $ Stack stack) ++ ['\n'])
