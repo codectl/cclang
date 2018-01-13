@@ -4,4 +4,4 @@ import Processor
 
 
 main :: IO ()
-main = run "resources/fib.txt"
+main = run "resources/fibonacci.txt"

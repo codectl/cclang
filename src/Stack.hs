@@ -27,10 +27,3 @@ size (Stack xs) = length xs
 
 nil :: Stack a -> Stack a
 nil (Stack xs) = Stack xs
-
--- Textual representation for the stack
---instance Show a => Show (Stack a) where
---  show (Stack a) = "{" ++ printStack (Stack a) ++ "}"
---
---printStack :: Show a => Stack a -> String
---printStack (Stack xs) = show xs

@@ -1,4 +1,7 @@
-module Processor where
+module Processor (
+  Stack,
+  run
+) where
 
 import Stack
 import Data.Bits
