@@ -1,0 +1,12 @@
+6
+## MACROS#################################
+##########################################
+#--Imprime o estado da pilha
+printAll 0   size 1 == ! if:$then1:$else1
+   then1 0   , $printAll
+   else1 0   .
+fibonacci 1   1 1 _1 $fibonacciAux
+fibonacciAux 0   loop:$fibStep pop
+fibStep 3   _1 _2 _1 _2 +
+##########################################
+10 $fibonacci $printAll
