@@ -1,6 +1,7 @@
 module Processor (
   Stack,
-  run
+  run,
+  processData
 ) where
 
 import Stack
@@ -89,8 +90,8 @@ eval (_, state, []) = state
 eval (macros, state, (token:tokens)) = eval (macros, evalToken macros state token, tokens)
 
 -- Builds up program based on file data and returns result from eval
-processData :: String -> IO State
-processData rawFileData = return $ eval (macros, initialState, tokens)
+processData :: String -> State
+processData rawFileData = parseResult $ eval (macros, initialState, tokens)
   where
     tokens = words $ unlines $ drop (numMacros + 1) fileData
     initialState = ([], Stack [], "")
@@ -99,12 +100,13 @@ processData rawFileData = return $ eval (macros, initialState, tokens)
     loadMacros n (l:ls) = if n == 0 then [] else readMacro l : loadMacros (n-1) ls
     fileData = removeComments $ lines $ rawFileData
     removeComments fd = filter (\line -> head line /= '#') fd
+    parseResult (macros, state, out) = if reverse out !! 0 == '\n' then (macros, state, init out) else (macros, state, out)
 
 -- Reads data from text file and outputs result from processData
 run :: FilePath -> IO ()
 run filepath = do
   contents <- readFile filepath
-  (_, _, output) <- processData $ contents
+  (_, _, output) <- return $ processData contents
   putStrLn output
 
 -- Reading a macro from string
