@@ -1,12 +1,8 @@
-module Processor (
-  Stack,
-  run,
-  processData
-) where
+module Processor where
 
 import Stack
 import Data.Bits
-import Data.Maybe
+import Control.Exception
 
 -- Types
 type Name = String
@@ -20,13 +16,11 @@ type Variable = (Name, Value)
 type State = ([Variable], Stack Integer, String)
 type Program = ([Macro], State, [Token])
 
--- Lists all supported operators
-supportedOperators :: [String]
-supportedOperators = words ", . + - * / % < <= > >= == & | ! dup swap peek pop size nil"
+-- List of all supported operators:
+-- , . + - * / % < <= > >= == & | ! dup swap peek pop size nil
 
--- Lists all supported syntax
-supportedSyntax :: [String]
-supportedSyntax = words "if: loop:"
+-- List of all supported syntax
+-- if: loop:
 
 -- Applies token to the current state resulting in a different state
 evalToken :: [Macro] -> State -> Token -> State
@@ -45,7 +39,12 @@ evalToken macros (vars, Stack stack, out) token =
       splitOn x str = splitOn' x [] "" str
       splitOn' _ result substring [] = result ++ [substring]
       splitOn' x result substring (t:ts) = if x == [t] then splitOn' x (result ++ [substring]) "" ts else splitOn' x result (substring ++ [t]) ts
-      evalPop n (Stack stack) = (fromJust . fst . pop $ Stack $ drop (n-1) stack, Stack $ drop n stack)
+      evalPush x (Stack stack) = case x of
+        Nothing -> throw (ErrorCall "Peek on empty stack")
+        Just x -> push x $ Stack stack
+      evalPop n (Stack stack) = case fst . pop $ Stack $ drop (n-1) stack of
+        Nothing -> error "Pop on empty stack"
+        Just x -> (x, snd . pop $ Stack $ drop (n-1) stack)
       evalSinglePop (Stack stack) = evalPop 1 $ Stack stack
       evalMacro 0 (vars, Stack stack, out) = (vars, Stack stack, out)
       evalMacro n (vars, Stack stack, out) = evalMacro (n-1) (setVar vars (['_'] ++ show n) (fst . evalSinglePop $ Stack stack), snd . evalSinglePop $ Stack stack, out)
@@ -70,16 +69,16 @@ evalToken macros (vars, Stack stack, out) token =
     "&" -> (vars, evalDoubleArg (.&.) $ Stack stack, out)
     "|" -> (vars, evalDoubleArg (.|.) $ Stack stack, out)
     "!" -> (vars, evalSingleArg (!) $ Stack stack, out)
-    "dup" -> (vars, push (fromJust . peek $ Stack stack) $ Stack stack, out)
+    "dup" -> (vars, evalPush (peek $ Stack stack) $ Stack stack, out)
     "swap" -> (vars, push (fst . evalPop 2 $ Stack stack) $ push (fst . evalSinglePop $ Stack stack) (snd . evalPop 2 $ Stack stack), out)
-    "peek" -> (vars, push (fromJust . peek $ Stack stack) $ Stack stack, out)
+    "peek" -> (vars, evalPush (peek $ Stack stack) $ Stack stack, out)
     "pop" -> (vars, snd . evalSinglePop $ Stack stack, out)
     "size" -> (vars, push (toInteger . size $ Stack stack) $ Stack stack, out)
     "nil" -> (vars, Stack stack, out)
     _ | token !! 0 == '@' -> (setVar vars (tail token) $ fst . evalSinglePop $ Stack stack, snd . evalSinglePop $ Stack stack, out)
-    _ | elem token $ map (\(x,_) -> x) vars -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
-    _ | token !! 0 == '_' -> (vars, push (fromJust $ getVar vars token) $ Stack stack, out)
-    _ | token !! 0 == '$' -> eval (macros, evalMacro (fromJust . getMacroArity macros $ tail token) (vars, Stack stack, out), fromJust $ getMacroTokens macros $ tail token)
+    _ | elem token $ map (\(x,_) -> x) vars -> (vars, push (getVar vars token) $ Stack stack, out)
+    _ | token !! 0 == '_' -> (vars, push (getVar vars token) $ Stack stack, out)
+    _ | token !! 0 == '$' -> eval (macros, evalMacro (getMacroArity macros $ tail token) (vars, Stack stack, out), getMacroTokens macros $ tail token)
     _ | take 3 token == "if:" -> evalConditional macros (vars, (evalSinglePop $ Stack stack), out) token
     _ | take 5 token == "loop:" -> loop (vars, Stack stack, out) (evalSinglePop $ Stack stack) $ splitOn ":" token !! 1
     _ -> (vars, push (read token :: Integer) $ Stack stack, out)
@@ -100,7 +99,7 @@ processData rawFileData = parseResult $ eval (macros, initialState, tokens)
     loadMacros n (l:ls) = if n == 0 then [] else readMacro l : loadMacros (n-1) ls
     fileData = removeComments $ lines $ rawFileData
     removeComments fd = filter (\line -> head line /= '#') fd
-    parseResult (macros, state, out) = if reverse out !! 0 == '\n' then (macros, state, init out) else (macros, state, out)
+    parseResult (macros, state, out) = if length out > 0 && reverse out !! 0 == '\n' then (macros, state, init out) else (macros, state, out)
 
 -- Reads data from text file and outputs result from processData
 run :: FilePath -> IO ()
@@ -109,6 +108,17 @@ run filepath = do
   (_, _, output) <- return $ processData contents
   putStrLn output
 
+runCommand :: String -> IO String
+runCommand content = do
+  state <- try . evaluate . extractStack $ finalState
+  case state of
+    Left (SomeException ex) -> throw ex
+    Right stack -> return . extractOutput $ finalState
+  where
+    extractStack (_, stack, _) = stack
+    extractOutput (_, _, output) = output
+    finalState = processData content
+
 -- Reading a macro from string
 readMacro :: String -> Macro
 readMacro line = readMacro' $ words line
@@ -116,19 +126,19 @@ readMacro line = readMacro' $ words line
     readMacro' ls = (head ls, (read $ head $ tail ls), (drop 2 ls))
 
 -- Get macro token by name
-getMacroTokens :: [Macro] -> Name -> Maybe [Token]
-getMacroTokens [] _ = Nothing
-getMacroTokens ((name, _, tokens):macros) lookup_name = if name == lookup_name then Just tokens else getMacroTokens macros lookup_name
+getMacroTokens :: [Macro] -> Name ->  [Token]
+getMacroTokens [] _ = error "No macro found"
+getMacroTokens ((name, _, tokens):macros) lookup_name = if name == lookup_name then tokens else getMacroTokens macros lookup_name
 
 -- Get macro arity by name
-getMacroArity :: [Macro] -> Name -> Maybe Arity
-getMacroArity [] _ = Nothing
-getMacroArity ((name, arity, _):macros) lookup_name = if name == lookup_name then Just arity else getMacroArity macros lookup_name
+getMacroArity :: [Macro] -> Name -> Arity
+getMacroArity [] _ = error "No macro found"
+getMacroArity ((name, arity, _):macros) lookup_name = if name == lookup_name then arity else getMacroArity macros lookup_name
 
 -- Get variable value by name
-getVar :: [Variable] -> Name -> Maybe Value
-getVar [] _ = Nothing
-getVar ((name, value):variables) lookup_name = if name == lookup_name then Just value else getVar variables lookup_name
+getVar :: [Variable] -> Name -> Value
+getVar [] _ = error "No variable found"
+getVar ((name, value):variables) lookup_name = if name == lookup_name then value else getVar variables lookup_name
 
 -- Set variable value by name
 setVar :: [Variable] -> Name -> Value -> [Variable]
