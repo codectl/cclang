@@ -45,7 +45,12 @@ spec = do
       runCommand "0\n 1 2 swap , ." `shouldReturn` "1 2"
       runCommand "0\n 1 peek ." `shouldReturn` "1"
       runCommand "0\n 1 2 pop ." `shouldReturn` "1"
+      runCommand "0\n 1 size , ." `shouldReturn` "1 1"
+      runCommand "0\n 1 nil ." `shouldReturn` "1"
 
     context "throws error when" $ do
-      it "peek used with empty list" $ do
+      it "peek is used with empty stack" $ do
         runCommand "0\n peek" `shouldThrow` errorCall "Peek on empty stack"
+
+      it "pop is used with empty stack" $ do
+        runCommand "0\n pop" `shouldThrow` errorCall "Pop on empty stack"
