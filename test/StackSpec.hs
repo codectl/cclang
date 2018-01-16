@@ -19,8 +19,13 @@ spec :: Spec
 spec = do
 
   describe "dup" $ do
-    it "returns stack with duplicated top element" $ do
-      dup (Stack [1]) `shouldBe` Stack [1,1]
+    context "when stack is empty" $ do
+      it "returns stack with duplicated top element" $ do
+        dup (Stack [1]) `shouldBe` Stack [1,1]
+
+    context "when stack is empty" $ do
+      it "returns empty stack" $ do
+        dup (Stack []) `shouldBe` (Stack [] :: Stack Integer)
 
   describe "swap" $ do
     context "when stack has 2 or more elements" $ do
