@@ -54,3 +54,6 @@ spec = do
 
       it "pop is used with empty stack" $ do
         runCommand "0\n pop" `shouldThrow` errorCall "Pop on empty stack"
+
+  describe "run" $ do
+    run "resources/fibonacci.txt" `shouldReturn` "89 55 34 21 13 8 5 3 2 1 1"
